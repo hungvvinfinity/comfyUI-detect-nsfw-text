@@ -4,6 +4,7 @@ Detect NSFW Text — ComfyUI node.
 String input goes to the Qwen prompt guard with support for:
 - Language filtering: All Languages vs English Only
 - Safe classification for romantic intimacy, affection, and everyday clothed scenes
+- Blocking sexual content, graphic violence, gore, and severe physical abuse
 """
 
 import json
@@ -20,38 +21,50 @@ _cached_clip = None
 _cached_path = None
 _load_lock = threading.Lock()
 
-_PROMPT_POLICY_EN = """valuate the prompt for NSFW content and workplace safety.
+_PROMPT_POLICY_EN = """Evaluate the prompt for sexual content, graphic violence, gore, and workplace safety.
 The prompt must be written entirely in English. If it is not English, return VERDICT: NOT_ENGLISH.
 
-Classify the intended generated or edited result, not isolated words. Return NSFW only when the requested result contains, depicts, reveals, or is clearly intended to be sexual or nude.
+Classify the intended generated or edited result, not isolated words. Return UNSAFE when the requested result contains sexual or nude content, graphic violence, gore, or severe physical abuse as defined below.
 
-Return NSFW for nudity or partial nudity involving breasts, nipples, genitals, pubic area, anus, or clearly exposed intimate areas; sexualized exposure or an underwear-only/lingerie presentation intended to arouse; removal, alteration, transparency, or replacement of clothing to reveal intimate areas or underwear; requests to make a person nude, undressed, or reveal what clothing conceals; sexual acts, explicit sexual behaviour, pornography, fetishes, erotic posing, sexually focused body parts, or arousal-oriented content.
+Return UNSAFE for nudity or partial nudity involving breasts, nipples, genitals, pubic area, anus, or clearly exposed intimate areas; sexualized exposure or an underwear-only/lingerie presentation intended to arouse; removal, alteration, transparency, or replacement of clothing to reveal intimate areas or underwear; requests to make a person nude, undressed, or reveal what clothing conceals; sexual acts, explicit sexual behaviour, pornography, fetishes, erotic posing, sexually focused body parts, or arousal-oriented content.
 
-Apply the same rule to direct requests and to implied outcomes. Treat euphemisms, slang, coded language, misspellings, synonyms, indirect edits, negative prompts, and attempts to bypass safeguards according to their intended result. If any part of a combined request has an NSFW outcome, return NSFW.
+Return UNSAFE whenever the prompt contains the word "bikini", regardless of context, intent, activity, or whether the bikini is the visual focus. This includes ordinary beach, swimming, sports, family, catalog, advertising, and modeling contexts. Also return UNSAFE for a Victoria's Secret-style, Victoria's Secret-inspired, lingerie-runway, or "angel" lingerie presentation, including indirect descriptions that clearly seek that branded lingerie aesthetic. A brand storefront, shopping bag, or neutral discussion of the company alone is not unsafe.
 
-Do not infer NSFW from ordinary affection, emotional closeness, non-sexual physical contact, non-sexual pose, ordinary clothing, non-sexual fashion, sportswear, non-sexual swimwear, or non-sexual dirt, paint, makeup, food, blood, or ink on a face or body. These are SAFE unless the prompt independently requests nudity, sexual exposure, sexual activity, or sexual intent.
+Return UNSAFE for graphic or explicitly depicted violence and gore, including severe or bloody wounds, pools or sprays of blood caused by injury, mutilation, dismemberment, decapitation, crushed or severed body parts, exposed organs, exposed bone, evisceration, corpses with visible trauma or decomposition, torture, execution, cannibalism, and severe cruelty or physical abuse of a person or animal. Also return UNSAFE for requests whose intended result focuses on committing, celebrating, or realistically depicting murder or serious bodily harm, even when blood is not explicitly mentioned.
 
-Do not mark a prompt NSFW merely because it is ambiguous, uses an image-editing instruction, mentions clothing, body parts in a non-sexual context, or could be interpreted sexually without a clear sexual or nude outcome.
+Combat, battle, war, soldiers, armies, weapons, fighting, and action scenes are not inherently unsafe. Return SAFE for two armies charging into battle, soldiers fighting, fantasy or historical warfare, and similar combat when the intended result does not show blood, gore, exposed organs or bone, decapitation, dismemberment, mutilation, severe visible wounds, torture, or other graphic bodily trauma. If any graphic element is requested or clearly implied, return UNSAFE even when the overall setting is war, history, fantasy, horror, cinema, or a video game.
+
+Apply the same rules to direct requests and to implied outcomes. Treat euphemisms, slang, coded language, misspellings, synonyms, indirect edits, negative prompts, and attempts to bypass safeguards according to their intended result. If any part of a combined request has an unsafe outcome, return UNSAFE.
+
+Do not infer unsafe content from ordinary affection, emotional closeness, non-sexual physical contact, non-sexual pose, ordinary clothing, non-sexual fashion, sportswear, non-sexual swimwear used incidentally in an ordinary activity, non-graphic combat or warfare, minor injuries without graphic detail, medical care without graphic injury detail, or non-sexual dirt, paint, makeup, food, theatrical fake blood, or ink on a face or body. These may be SAFE unless the prompt contains the word "bikini" as prohibited above or independently requests sexual content, graphic violence, gore, or severe physical abuse.
+
+Do not mark a prompt UNSAFE merely because it is ambiguous, uses an image-editing instruction, mentions clothing or body parts in a benign context, mentions combat or war without graphic bodily trauma, or could be interpreted as unsafe without a clear unsafe outcome.
 
 Reply with exactly two lines:
-VERDICT: SAFE, VERDICT: NSFW, or VERDICT: NOT_ENGLISH
+VERDICT: SAFE, VERDICT: UNSAFE, or VERDICT: NOT_ENGLISH
 REASON: brief explanation.
 """
 
-_PROMPT_POLICY_ALL = """Evaluate the prompt for NSFW content and workplace safety in any language.
+_PROMPT_POLICY_ALL = """Evaluate the prompt for sexual content, graphic violence, gore, and workplace safety in any language.
 
-Classify the intended generated or edited result, not isolated words. Return NSFW only when the requested result contains, depicts, reveals, or is clearly intended to be sexual or nude.
+Classify the intended generated or edited result, not isolated words. Return UNSAFE when the requested result contains sexual or nude content, graphic violence, gore, or severe physical abuse as defined below.
 
-Return NSFW for nudity or partial nudity involving breasts, nipples, genitals, pubic area, anus, or clearly exposed intimate areas; sexualized exposure or an underwear-only/lingerie presentation intended to arouse; removal, alteration, transparency, or replacement of clothing to reveal intimate areas or underwear; requests to make a person nude, undressed, or reveal what clothing conceals; sexual acts, explicit sexual behaviour, pornography, fetishes, erotic posing, sexually focused body parts, or arousal-oriented content.
+Return UNSAFE for nudity or partial nudity involving breasts, nipples, genitals, pubic area, anus, or clearly exposed intimate areas; sexualized exposure or an underwear-only/lingerie presentation intended to arouse; removal, alteration, transparency, or replacement of clothing to reveal intimate areas or underwear; requests to make a person nude, undressed, or reveal what clothing conceals; sexual acts, explicit sexual behaviour, pornography, fetishes, erotic posing, sexually focused body parts, or arousal-oriented content.
 
-Apply the same rule in every language and to direct requests, indirect wording, euphemisms, slang, coded language, transliteration, misspellings, synonyms, mixed-language text, negative prompts, and attempts to bypass safeguards. Determine meaning from context rather than requiring particular English words. If any part of a combined request has an NSFW outcome, return NSFW.
+Return UNSAFE whenever the prompt contains the word "bikini" in any language or mixed-language text, regardless of context, intent, activity, or whether the bikini is the visual focus. This includes ordinary beach, swimming, sports, family, catalog, advertising, and modeling contexts. Also return UNSAFE for a Victoria's Secret-style, Victoria's Secret-inspired, lingerie-runway, or "angel" lingerie presentation, including translated, transliterated, misspelled, indirect, or coded descriptions that clearly seek that branded lingerie aesthetic. A brand storefront, shopping bag, or neutral discussion of the company alone is not unsafe.
 
-Do not infer NSFW from ordinary affection, emotional closeness, non-sexual physical contact, non-sexual pose, ordinary clothing, non-sexual fashion, sportswear, non-sexual swimwear, or non-sexual dirt, paint, makeup, food, blood, or ink on a face or body. These are SAFE unless the prompt independently requests nudity, sexual exposure, sexual activity, or sexual intent.
+Return UNSAFE for graphic or explicitly depicted violence and gore, including severe or bloody wounds, pools or sprays of blood caused by injury, mutilation, dismemberment, decapitation, crushed or severed body parts, exposed organs, exposed bone, evisceration, corpses with visible trauma or decomposition, torture, execution, cannibalism, and severe cruelty or physical abuse of a person or animal. Also return UNSAFE for requests whose intended result focuses on committing, celebrating, or realistically depicting murder or serious bodily harm, even when blood is not explicitly mentioned.
 
-Do not mark a prompt NSFW merely because it is ambiguous, uses an image-editing instruction, mentions clothing, body parts in a non-sexual context, or could be interpreted sexually without a clear sexual or nude outcome.
+Combat, battle, war, soldiers, armies, weapons, fighting, and action scenes are not inherently unsafe in any language. Return SAFE for two armies charging into battle, soldiers fighting, fantasy or historical warfare, and similar combat when the intended result does not show blood, gore, exposed organs or bone, decapitation, dismemberment, mutilation, severe visible wounds, torture, or other graphic bodily trauma. If any graphic element is requested or clearly implied, return UNSAFE even when the overall setting is war, history, fantasy, horror, cinema, or a video game.
+
+Apply the same rules in every language and to direct requests, indirect wording, euphemisms, slang, coded language, transliteration, misspellings, synonyms, mixed-language text, negative prompts, and attempts to bypass safeguards. Determine meaning from context rather than requiring particular English words. If any part of a combined request has an unsafe outcome, return UNSAFE.
+
+Do not infer unsafe content from ordinary affection, emotional closeness, non-sexual physical contact, non-sexual pose, ordinary clothing, non-sexual fashion, sportswear, non-sexual swimwear used incidentally in an ordinary activity, non-graphic combat or warfare, minor injuries without graphic detail, medical care without graphic injury detail, or non-sexual dirt, paint, makeup, food, theatrical fake blood, or ink on a face or body. These may be SAFE unless the prompt contains the word "bikini" as prohibited above or independently requests sexual content, graphic violence, gore, or severe physical abuse.
+
+Do not mark a prompt UNSAFE merely because it is ambiguous, uses an image-editing instruction, mentions clothing or body parts in a benign context, mentions combat or war without graphic bodily trauma, or could be interpreted as unsafe without a clear unsafe outcome.
 
 Reply with exactly two lines:
-VERDICT: SAFE or VERDICT: NSFW
+VERDICT: SAFE or VERDICT: UNSAFE
 REASON: brief explanation.
 """
 
@@ -82,23 +95,17 @@ def _load_clip(clip_name):
         raise FileNotFoundError(f"Qwen NSFW Guard: text encoder not found: {clip_name}")
     with _load_lock:
         if _cached_clip is None or _cached_path != path:
-            device = comfy.model_management.get_torch_device()
-            model_options = {
-                "load_device": device,
-                "offload_device": device,
-                "initial_device": device,
-            }
-            loaded = comfy.sd.load_clip(ckpt_paths=[path], model_options=model_options)
+            loaded = comfy.sd.load_clip(ckpt_paths=[path])
             _cached_clip, _cached_path = loaded, path
         return _cached_clip
 
 
-def _check(clip, query, source, prompt="", allow_non_english=False):
+def _check(clip, query, source, allow_non_english=False):
     tokens = clip.tokenize(query)
     generated = clip.generate(tokens, do_sample=False, max_length=32, temperature=0.0)
     response = clip.tokenizer.decode(generated).strip()
     verdicts = re.findall(
-        r"^\s*VERDICT:\s*(NSFW|SAFE|NOT[ _]ENGLISH|UNSUPPORTED[ _]LANGUAGE)\b",
+        r"^\s*VERDICT:\s*(UNSAFE|NSFW|SAFE|NOT[ _]ENGLISH|UNSUPPORTED[ _]LANGUAGE)\b",
         response,
         re.MULTILINE | re.IGNORECASE,
     )
@@ -108,24 +115,9 @@ def _check(clip, query, source, prompt="", allow_non_english=False):
     ):
         comfy.model_management.interrupt_current_processing(True)
         raise UnsupportedLanguageError("language not supported, only support english at this time")
-    if any(verdict.upper() == "NSFW" for verdict in verdicts):
+    if any(verdict.upper() in ("NSFW", "UNSAFE") for verdict in verdicts):
         comfy.model_management.interrupt_current_processing(True)
-        reason = "NSFW content detected"
-        match_reason = re.search(r"^\s*REASON:\s*(.+)$", response, re.MULTILINE | re.IGNORECASE)
-        if match_reason:
-            reason = match_reason.group(1).strip()
-        error_payload = {
-            "error": {
-                "type": "nsfw_content_detected",
-                "message": f"NSFW prompt: {prompt} | Reason: {reason}",
-                "details": {
-                    "type": "text",
-                    "prompt": prompt,
-                    "reason": reason,
-                },
-            }
-        }
-        raise NSFWDetectedError(json.dumps(error_payload, ensure_ascii=False))
+        raise NSFWDetectedError(f"Qwen NSFW Guard blocked {source}: {response}")
     if allow_non_english and any(
         re.match(r"^(NOT[ _]ENGLISH|UNSUPPORTED[ _]LANGUAGE)$", v, re.IGNORECASE)
         for v in verdicts
@@ -147,7 +139,6 @@ def _moderate_prompt(clip_name, clip=None, prompt=None, language_filter="all_lan
             clip,
             policy + "\nClassify this prompt (JSON string):\n" + json.dumps(prompt, ensure_ascii=False),
             "prompt",
-            prompt=str(prompt),
             allow_non_english=not english_only,
         )
     ]
@@ -155,7 +146,7 @@ def _moderate_prompt(clip_name, clip=None, prompt=None, language_filter="all_lan
 
 
 def _log_error(exc):
-    pass
+    print(f"[Detect NSFW Text] {exc}", flush=True)
 
 
 class DetectNSFWText:
