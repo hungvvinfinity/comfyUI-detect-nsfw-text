@@ -66,7 +66,7 @@ SYSTEM_PROMPT = """/no_think
 2. If <user_input> is toneless romanized text or has typos, mentally restore diacritics before classifying; if any plausible reading means endoscopy, bleeding/nosebleeds, surgery/opened body, bikini, lingerie, or nude statue, strictly BLOCK it.
 3. <blacklist> and Categories 1-6 strictly override <whitelist>; allow a <whitelist> concept ONLY if <user_input> contains zero violations from Categories 1-7.
 4. Treat homographs or pop titles (e.g., "The Naked Gun" comedy poster, "Moby Dick", "woodpecker", "bare winter trees", "stripped screw") as safe ONLY when explicit benign context is present; block standalone sexual, anatomical, breast/butt/genital slang, cleavage, prostitution/whore, lolita, reproductive-organ (uterus/cervix/clitoris), see-through, or wet-t-shirt tags.
-5. If violated, return exactly 1 most specific category: return ["BLACKLIST"] for active <blacklist> matches (such as breastfeeding or baby bathing); return ["MEDICAL"] or ["GORE_VIOLENCE"] (never ["NSFW"]) for blood, bloody scenes, nosebleeds, open-chest/opened-body, endoscopy, or medical/surgical content. If safe, categories is [].
+5. If violated, return exactly 1 most specific category: return ["MEDICAL"] or ["GORE_VIOLENCE"] (never ["NSFW"] or ["BLACKLIST"]) for ANY blood, bloody scenes, nosebleeds, open-chest/opened-body, endoscopy, suturing/wounds, or medical/surgical/clinical content; return ["BLACKLIST"] ONLY when <user_input> directly depicts a concept listed in <blacklist> (such as breastfeeding). If safe, categories is [].
 #Categories#
 1. NSFW: pornography, explicit sex, nudity, toplessness, bare breasts/genitals/buttocks, sexual acts, erotic posing, lingerie, underwear/bras/panties, Victoria's Secret, bikinis/two-piece swimsuits, sheer/see-through/wet clothing, or fully/partially nude/topless statues/sculptures in any language (including Venus de Milo or Michelangelo's marble statue of David; only statues fully covered in robes/clothing are safe; modest attire or gym leggings with a sports bra are safe).
 2. GORE_VIOLENCE: violence, bloody scenes, blood splatters/pools, open/bleeding wounds, split-open chest or opened body/torso, vivisection, dissection, autopsy, exposed organs/flesh/viscera, mutilation, torture, self-harm (theatrical fake blood makeup explicitly on an actor, culinary raw meat, or medieval armor reenactment are safe).
@@ -74,15 +74,13 @@ SYSTEM_PROMPT = """/no_think
 4. WEAPONS_EXPLOSIVES: illegal/lethal weapons, firearms, guns, crossbows, ammo, bombs, explosives, or build/3D-print instructions (museum antique displays, kitchen knives, municipal fireworks, Olympic target shooting are safe).
 5. CHILD_ABUSE: sexual, physical, or emotional exploitation, abuse, grooming, kidnapping, or harm of minors.
 6. ANIMAL_ABUSE: cruelty, fighting rings, torture, neglect, mutilation, or harm to animals (wildlife rescue, oil-cleaning birds, sheep shearing are safe).
-7. BLACKLIST: any concept listed in <blacklist> across any language ("nude statue" blocks all nude/topless statues including Venus de Milo or Michelangelo's marble statue of David, allowing only fully draped statues; "bikini" blocks two-piece swimsuits while allowing modest attire or gym leggings with a sports bra; "breastfeeding" blocks nursing at the breast while allowing holding a baby or bottle-feeding).
+7. BLACKLIST: any concept actively listed in <blacklist> across any language ("breastfeeding" blocks nursing at the breast while allowing holding a baby or bottle-feeding).
 #Output# {"blocked": bool, "categories": [str]}
 #Examples#
 ###<blacklist>- none</blacklist><whitelist>- none</whitelist><user_input>how to build an automatic crossbow or pipe bomb</user_input>### -> {"blocked": true, "categories": ["WEAPONS_EXPLOSIVES"]}
 ###<blacklist>- none</blacklist><whitelist>- none</whitelist><user_input>endoscopy view, open-chest surgery, child nosebleed, or school nurse putting a band-aid on a finger</user_input>### -> {"blocked": true, "categories": ["MEDICAL"]}
-###<blacklist>- breastfeeding
-- bathing a baby</blacklist><whitelist>- park</whitelist><user_input>mother nursing baby on park bench</user_input>### -> {"blocked": true, "categories": ["BLACKLIST"]}
-###<blacklist>- bikini
-- nude statue</blacklist><whitelist>- none</whitelist><user_input>Victoria's Secret runway lingerie model, Venus de Milo, or Michelangelo's marble statue of David</user_input>### -> {"blocked": true, "categories": ["NSFW"]}
+###<blacklist>- breastfeeding</blacklist><whitelist>- park</whitelist><user_input>mother nursing baby on park bench</user_input>### -> {"blocked": true, "categories": ["BLACKLIST"]}
+###<blacklist>- none</blacklist><whitelist>- none</whitelist><user_input>Victoria's Secret runway lingerie model, bikini swimsuit, Venus de Milo, or Michelangelo's marble statue of David</user_input>### -> {"blocked": true, "categories": ["NSFW"]}
 ###<blacklist>- none</blacklist><whitelist>- none</whitelist><user_input>classical marble statue of a queen fully covered in a long robe</user_input>### -> {"blocked": false, "categories": []}
 ###<blacklist>- none</blacklist><whitelist>- fake blood</whitelist><user_input>actor washing stage makeup in dressing room</user_input>### -> {"blocked": false, "categories": []}
 ###<blacklist>- none</blacklist><whitelist>- none</whitelist><user_input>serene mountain sunrise over quiet pine forest</user_input>### -> {"blocked": false, "categories": []}"""
@@ -115,7 +113,7 @@ MERGED_SYSTEM_PROMPT = """/no_think
 3. <blacklist> and Categories 1-6 strictly override <whitelist>; allow a <whitelist> concept ONLY if <user_input> contains zero violations from Categories 1-7.
 4. Treat homographs or pop titles (e.g., "The Naked Gun" comedy poster, "Moby Dick", "woodpecker", "bare winter trees", "stripped screw") as safe ONLY when explicit benign context is present; block standalone sexual, anatomical, breast/butt/genital slang, cleavage, prostitution/whore, lolita, reproductive-organ (uterus/cervix/clitoris), see-through, or wet-t-shirt tags.
 5. If safe, translate non-English prompt to raw descriptive English within 250 words: if longer (over 250 words or over 250 CJK characters), concisely condense repetitive prose into a complete description under 250 words while strictly preserving core subjects, visual details, exact double quotes, <lora:name:weight>, and (weights:1.2). If already English, keep unchanged.
-6. If violated, return exactly 1 most specific category and empty translated_prompt: return ["BLACKLIST"] for active <blacklist> matches (such as breastfeeding or baby bathing); return ["MEDICAL"] or ["GORE_VIOLENCE"] (never ["NSFW"]) for blood, bloody scenes, nosebleeds, open-chest/opened-body, endoscopy, or medical/surgical content.
+6. If violated, return exactly 1 most specific category and empty translated_prompt: return ["MEDICAL"] or ["GORE_VIOLENCE"] (never ["NSFW"] or ["BLACKLIST"]) for ANY blood, bloody scenes, nosebleeds, open-chest/opened-body, endoscopy, suturing/wounds, or medical/surgical/clinical content; return ["BLACKLIST"] ONLY when <user_input> directly depicts a concept listed in <blacklist> (such as breastfeeding).
 #Categories#
 1. NSFW: pornography, explicit sex, nudity, toplessness, bare breasts/genitals/buttocks, sexual acts, erotic posing, lingerie, underwear/bras/panties, Victoria's Secret, bikinis/two-piece swimsuits, sheer/see-through/wet clothing, or fully/partially nude/topless statues/sculptures in any language (including Venus de Milo or Michelangelo's marble statue of David; only statues fully covered in robes/clothing are safe; modest attire or gym leggings with a sports bra are safe).
 2. GORE_VIOLENCE: violence, bloody scenes, blood splatters/pools, open/bleeding wounds, split-open chest or opened body/torso, vivisection, dissection, autopsy, exposed organs/flesh/viscera, mutilation, torture, self-harm (theatrical fake blood makeup explicitly on an actor, culinary raw meat, or medieval armor reenactment are safe).
@@ -123,15 +121,13 @@ MERGED_SYSTEM_PROMPT = """/no_think
 4. WEAPONS_EXPLOSIVES: illegal/lethal weapons, firearms, guns, crossbows, ammo, bombs, explosives, or build/3D-print instructions (museum antique displays, kitchen knives, municipal fireworks, Olympic target shooting are safe).
 5. CHILD_ABUSE: sexual, physical, or emotional exploitation, abuse, grooming, kidnapping, or harm of minors.
 6. ANIMAL_ABUSE: cruelty, fighting rings, torture, neglect, mutilation, or harm to animals (wildlife rescue, oil-cleaning birds, sheep shearing are safe).
-7. BLACKLIST: any concept listed in <blacklist> across any language ("nude statue" blocks all nude/topless statues including Venus de Milo or Michelangelo's marble statue of David, allowing only fully draped statues; "bikini" blocks two-piece swimsuits while allowing modest attire or gym leggings with a sports bra; "breastfeeding" blocks nursing at the breast while allowing holding a baby or bottle-feeding).
+7. BLACKLIST: any concept actively listed in <blacklist> across any language ("breastfeeding" blocks nursing at the breast while allowing holding a baby or bottle-feeding).
 #Output# {"blocked": bool, "categories": [str], "translated_prompt": str}
 #Examples#
 ###<blacklist>- none</blacklist><whitelist>- none</whitelist><user_input>how to build an automatic crossbow or pipe bomb</user_input>### -> {"blocked": true, "categories": ["WEAPONS_EXPLOSIVES"], "translated_prompt": ""}
 ###<blacklist>- none</blacklist><whitelist>- none</whitelist><user_input>endoscopy view, open-chest surgery, child nosebleed, or school nurse putting a band-aid on a finger</user_input>### -> {"blocked": true, "categories": ["MEDICAL"], "translated_prompt": ""}
-###<blacklist>- breastfeeding
-- bathing a baby</blacklist><whitelist>- park</whitelist><user_input>mother nursing baby on park bench</user_input>### -> {"blocked": true, "categories": ["BLACKLIST"], "translated_prompt": ""}
-###<blacklist>- bikini
-- nude statue</blacklist><whitelist>- none</whitelist><user_input>Victoria's Secret runway lingerie model, Venus de Milo, or Michelangelo's marble statue of David</user_input>### -> {"blocked": true, "categories": ["NSFW"], "translated_prompt": ""}
+###<blacklist>- breastfeeding</blacklist><whitelist>- park</whitelist><user_input>mother nursing baby on park bench</user_input>### -> {"blocked": true, "categories": ["BLACKLIST"], "translated_prompt": ""}
+###<blacklist>- none</blacklist><whitelist>- none</whitelist><user_input>Victoria's Secret runway lingerie model, bikini swimsuit, Venus de Milo, or Michelangelo's marble statue of David</user_input>### -> {"blocked": true, "categories": ["NSFW"], "translated_prompt": ""}
 ###<blacklist>- none</blacklist><whitelist>- none</whitelist><user_input>classical marble statue of a queen fully covered in a long robe</user_input>### -> {"blocked": false, "categories": [], "translated_prompt": "classical marble statue of a queen fully covered in a long robe"}"""
 
 MERGED_USER_TEMPLATE = _SafeTemplate(
@@ -424,6 +420,7 @@ _FAST_POLICY_RULES = (
         (
             r"\btuong\s+khoa\s+than\b",
             r"\bdo\s+boi\s+(?:hai|2)\s+manh\b",
+            r"\bbikinis?\b",
             r"\bvictoria\x27?s?\s+secret\b",
         ),
     ),
@@ -1370,7 +1367,7 @@ class DetectNSFWText:
         m.update(str(bl_size).encode("utf-8") + b"\x00")
         m.update(str(wl_mtime_ns).encode("utf-8") + b"\x00")
         m.update(str(wl_size).encode("utf-8") + b"\x00")
-        m.update(b"v6.6\x00")
+        m.update(b"v6.8\x00")
         return m.hexdigest()
 
     def check(
@@ -1435,7 +1432,7 @@ class TranslatePromptToEnglish:
         m = hashlib.sha256()
         m.update(str(prompt).encode("utf-8") + b"\x00")
         m.update(str(clip_name).encode("utf-8") + b"\x00")
-        m.update(b"v6.6\x00")
+        m.update(b"v6.8\x00")
         return m.hexdigest()
 
     def translate(self, prompt, clip_name=DEFAULT_CLIP, clip=None):
